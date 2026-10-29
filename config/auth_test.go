@@ -113,3 +113,101 @@ password=secret
 		t.Fatal("failed reload replaced the working snapshot")
 	}
 }
+
+func TestConfigValidatesAuthentication(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		dsn          string
+		authProvider auth.Provider
+		wantErr      string
+	}{
+		{name: "native password", dsn: "exporter:secret@tcp(db.example:3306)/"},
+		{name: "AWS IAM without credentials", dsn: "exporter@tcp(db.example:3306)/", authProvider: auth.NewAWSIAMAuth("", "")},
+		{name: "IAM rejects password", dsn: "exporter:secret@tcp(db.example:3306)/", authProvider: auth.NewAWSIAMAuth("", ""), wantErr: "a password must not be set"},
+		{name: "invalid DSN", dsn: "invalid-dsn", wantErr: "parse mysql dsn"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewConfigWithDefaults()
+			cfg.DataSourceName = tt.dsn
+			cfg.AuthProvider = tt.authProvider
+
+			err := cfg.Validate()
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Validate() error = %v, want %q", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestReloadSkipsInvalidAuthentication(t *testing.T) {
+	const native = `[client]
+user=exporter
+password=secret
+`
+
+	const awsIAM = `[probe]
+user=exporter
+password=
+auth=aws-iam
+`
+
+	filename := filepath.Join(t.TempDir(), "auth.cnf")
+	handler, err := NewAuthConfigHandler(prometheus.NewRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reload := func(contents string) error {
+		if err := os.WriteFile(filename, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		return handler.ReloadConfig(filename, "localhost:3306", "", false, promslog.NewNopLogger())
+	}
+
+	if err := reload(native + awsIAM); err != nil {
+		t.Fatal(err)
+	}
+
+	// Invalid sections are logged and skipped while valid sections remain available.
+	for _, tt := range []struct {
+		name    string
+		section string
+		wantErr string
+	}{
+		{name: "password", section: awsIAM + "password=secret\n", wantErr: "a password must not be set"},
+		{name: "TLS disabled", section: awsIAM + "tls=false\n", wantErr: "TLS is required"},
+		{name: "plaintext fallback", section: awsIAM + "tls=preferred\n", wantErr: "plaintext fallback is not allowed"},
+		{name: "socket", section: awsIAM + "socket=/tmp/mysql.sock\n", wantErr: "a TCP endpoint is required"},
+		{name: "missing user", section: strings.ReplaceAll(awsIAM, "user=exporter", "user="), wantErr: "no user specified"},
+		{name: "unknown provider", section: strings.ReplaceAll(awsIAM, "aws-iam", "unknown"), wantErr: "unsupported auth type"},
+		{name: "missing CA", section: awsIAM + "ssl-ca=" + filepath.Join(t.TempDir(), "missing-ca.pem") + "\n", wantErr: "failed to register a custom TLS configuration"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := reload(native + tt.section); err != nil {
+				t.Fatalf("valid client section must allow reload: %v", err)
+			}
+
+			cfg := handler.GetConfig()
+			if len(cfg.Sections) != 1 || cfg.Sections["client"].User != "exporter" {
+				t.Fatal("reload must retain the valid client section and skip the invalid module")
+			}
+			if _, ok := cfg.Providers["probe"]; ok {
+				t.Fatal("reload retained the invalid module's provider")
+			}
+		})
+	}
+
+	// With no valid sections, reload still fails and preserves the working snapshot.
+	workingSnapshot := handler.GetConfig()
+	if err := reload(awsIAM + "password=secret\n"); err == nil {
+		t.Fatal("reload accepted a config with no valid sections")
+	}
+	if handler.GetConfig() != workingSnapshot {
+		t.Fatal("failed reload replaced the working snapshot")
+	}
+}

@@ -217,6 +217,7 @@ ssl-ca = /path/to/rds-ca-bundle.pem
 - IAM mode requires a TCP endpoint and TLS without plaintext fallback. `ssl-ca` can supply the [RDS CA bundle](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html).
 - `tls=false` and `tls=preferred` are rejected; `tls=skip-verify` disables certificate verification.
 - Static passwords are rejected; `password=` clears any password inherited from another section or `MYSQLD_EXPORTER_PASSWORD`. Tokens are generated automatically for each new physical connection.
+- IAM authentication requirements are checked at startup and reload. Invalid sections are logged and skipped; if no valid sections remain, reload fails and preserves the previous configuration. AWS credentials are loaded when a connection is opened.
 
 For `/probe`, select the section with `auth_module`; tokens use the effective target endpoint and configured database user.
 

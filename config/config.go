@@ -266,6 +266,9 @@ func (c Config) Validate() error {
 			return fmt.Errorf("unknown collector %q", name)
 		}
 	}
+	if _, err := auth.OpenConnector(c.DataSourceName, c.AuthProvider); err != nil {
+		return fmt.Errorf("invalid database authentication: %w", err)
+	}
 
 	return nil
 }
@@ -431,6 +434,17 @@ func (ch *AuthConfigHandler) ReloadConfig(filename string, mysqldAddress string,
 		if err != nil {
 			logger.Error("failed to select authentication", "section", sectionName, "err", err)
 			continue
+		}
+		if provider != nil {
+			dsn, err := mysqlcfg.FormDSN("", sectionName)
+			if err != nil {
+				logger.Error("failed to form authentication DSN", "section", sectionName, "err", err)
+				continue
+			}
+			if _, err := auth.OpenConnector(dsn, provider); err != nil {
+				logger.Error("failed to validate authentication", "section", sectionName, "err", err)
+				continue
+			}
 		}
 
 		config.Sections[sectionName] = *mysqlcfg
