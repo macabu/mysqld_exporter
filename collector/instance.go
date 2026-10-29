@@ -23,7 +23,7 @@ import (
 
 	"github.com/blang/semver/v4"
 
-	"github.com/prometheus/mysqld_exporter/internal/auth"
+	"github.com/prometheus/mysqld_exporter/auth"
 )
 
 const (

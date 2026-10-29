@@ -24,7 +24,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/prometheus/mysqld_exporter/internal/auth"
+	"github.com/prometheus/mysqld_exporter/auth"
 )
 
 // Metric name parts.

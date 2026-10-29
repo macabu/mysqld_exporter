@@ -21,7 +21,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
-	"github.com/prometheus/mysqld_exporter/internal/auth"
+	"github.com/prometheus/mysqld_exporter/auth"
 )
 
 func TestAuthConfigProviderLifetime(t *testing.T) {

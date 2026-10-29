@@ -32,7 +32,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/ini.v1"
 
-	"github.com/prometheus/mysqld_exporter/internal/auth"
+	"github.com/prometheus/mysqld_exporter/auth"
 )
 
 var (
